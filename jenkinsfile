@@ -28,7 +28,7 @@ pipeline {
                 sh '''
                 docker stop youtube-nodejs-container || true
                 docker rm youtube-nodejs-container || true
-                docker run -d -p 3001:3001 --name youtube-nodejs-container $DOCKER_IMAGE
+                docker run -d -p 3001:5000 --name youtube-nodejs-container $DOCKER_IMAGE
                 '''
             }
         }
@@ -46,7 +46,7 @@ pipeline {
                 expression { return env.DOCKERHUB_USER != null && env.DOCKERHUB_USER != "" }
             }
             steps {
-                withCredentials([string(credentialsId: 'dockerhub credentials', variable: 'DOCKERHUB_PASS')]) {
+                withCredentials([string(credentialsId: 'credentials-hub', variable: 'DOCKERHUB_PASS')]) {
                     sh '''
                     echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
                     docker tag $DOCKER_IMAGE $DOCKERHUB_USER/$DOCKER_IMAGE:latest
