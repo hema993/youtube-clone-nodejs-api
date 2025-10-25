@@ -1,0 +1,66 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = "youtube-nodejs"
+        DOCKERHUB_USER = "hema84683"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "Cloning GitHub repository..."
+                git branch: 'main', url: 'https://github.com/hema993/youtube-clone-nodejs-api.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "Building Docker image..."
+                sh 'docker build -t $DOCKER_IMAGE .'
+            }
+        }
+
+        stage('Run Container') {
+            steps {
+                echo "Running the container..."
+                // Stop old container if exists
+                sh '''
+                docker stop youtube-nodejs-container || true
+                docker rm youtube-nodejs-container || true
+                docker run -d -p 3001:3001 --name youtube-nodejs-container $DOCKER_IMAGE
+                '''
+            }
+        }
+
+        stage('Test App') {
+            steps {
+                echo "Checking if app is running..."
+                sh 'sleep 5 && curl -f http://localhost:3001 || echo "App not responding"'
+            }
+        }
+
+        // Optional: Push to Docker Hub
+        stage('Push to Docker Hub') {
+            when {
+                expression { return env.DOCKERHUB_USER != null && env.DOCKERHUB_USER != "" }
+            }
+            steps {
+                withCredentials([string(credentialsId: 'dockerhub credentials', variable: 'DOCKERHUB_PASS')]) {
+                    sh '''
+                    echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
+                    docker tag $DOCKER_IMAGE $DOCKERHUB_USER/$DOCKER_IMAGE:latest
+                    docker push $DOCKERHUB_USER/$DOCKER_IMAGE:latest
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Cleaning up old Docker images..."
+            sh 'docker image prune -f'
+        }
+    }
+}
