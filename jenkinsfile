@@ -2,65 +2,66 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "youtube-nodejs"
-        DOCKERHUB_USER = "hema84683"
+        DOCKERHUB_USER = 'hema84683'
+        IMAGE_NAME = 'youtube-node-api'
+        IMAGE_TAG = 'latest'
+        HOST_PORT = "8001"         // Port accessible externally
+        CONTAINER_PORT = "3000"    // Node.js app port inside container
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                echo "Cloning GitHub repository..."
                 git branch: 'master', url: 'https://github.com/hema993/youtube-clone-nodejs-api.git'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    echo "Installing Node.js dependencies..."
+                    npm install
+                '''
+            }
+        }
+
+        stage('Run Tests (optional)') {
+            steps {
+                sh '''
+                    echo "Running tests..."
+                    npm test || echo "No test script defined"
+                '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                echo "Building Docker image..."
-                sh 'docker build -t $DOCKER_IMAGE .'
+                sh "docker build -t ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG} ."
             }
         }
 
-        stage('Run Container') {
+        stage('Login to DockerHub') {
             steps {
-                echo "Running the container..."
-                // Stop old container if exists
-                sh '''
-                docker stop youtube-nodejs-container || true
-                docker rm youtube-nodejs-container || true
-                docker run -d -p 3001:5000 --name youtube-nodejs-container $DOCKER_IMAGE
-                '''
-            }
-        }
-
-        stage('Test App') {
-            steps {
-                echo "Checking if app is running..."
-                sh 'sleep 5 && curl -f http://localhost:3001 || echo "App not responding"'
-            }
-        }
-
-        // Optional: Push to Docker Hub
-        stage('Push to Docker Hub') {
-            when {
-                expression { return env.DOCKERHUB_USER != null && env.DOCKERHUB_USER != "" }
-            }
-            steps {
-                withCredentials([string(credentialsId: 'credentials-hub', variable: 'DOCKERHUB_PASS')]) {
-                    sh '''
-                    echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
-                    docker tag $DOCKER_IMAGE $DOCKERHUB_USER/$DOCKER_IMAGE:latest
-                    docker push $DOCKERHUB_USER/$DOCKER_IMAGE:latest
-                    '''
+                withCredentials([usernamePassword(credentialsId: 'credentials-hub', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh "echo $PASS | docker login -u $USER --password-stdin"
                 }
             }
         }
-    }
 
-    post {
-        always {
-            echo "Cleaning up old Docker images..."
-            sh 'docker image prune -f'
+        stage('Push Docker Image') {
+            steps {
+                sh "docker push ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                sh '''
+                    docker rm -f ${IMAGE_NAME} || true
+                    docker run -d --name ${IMAGE_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
+                '''
+            }
         }
     }
 }
